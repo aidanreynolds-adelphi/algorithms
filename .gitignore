@@ -20,3 +20,9 @@ build/
 
 .DS_Store
 
+# generated files
+figures/
+report/
+
+# downloaded files
+estimation+of+obesity+levels+based+on+eating+habits+and+physical+condition.zip
