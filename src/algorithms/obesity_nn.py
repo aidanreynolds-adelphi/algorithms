@@ -15,7 +15,7 @@ test_size: float = 0.2
 stratify = None
 
 # MLP hyperparameters (single-run training; tune via run_nn_gridsearch)
-hidden_layer_sizes: tuple[int, int] = (256, 128)
+hidden_layer_sizes: tuple[int, int] = (512, 128)
 activation: str = "tanh"
 solver: str = "adam"
 alpha: float = 5e-05
