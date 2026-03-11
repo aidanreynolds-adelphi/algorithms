@@ -26,3 +26,6 @@ report/
 
 # downloaded files
 estimation+of+obesity+levels+based+on+eating+habits+and+physical+condition.zip
+
+# PlotNeuralNet (cloned by plot_nn_diagram when needed)
+PlotNeuralNet/

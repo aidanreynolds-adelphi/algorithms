@@ -1,29 +1,27 @@
 from __future__ import annotations
 
-import pandas as pd  # type: ignore[import-untyped]
-from sklearn.metrics import accuracy_score, classification_report  # type: ignore[import-not-found]
-from sklearn.model_selection import train_test_split  # type: ignore[import-not-found]
-from sklearn.neural_network import MLPClassifier  # type: ignore[import-not-found]
-from sklearn.preprocessing import LabelEncoder  # type: ignore[import-not-found]
+import pandas as pd
+from sklearn.metrics import accuracy_score, classification_report
+from sklearn.model_selection import train_test_split
+from sklearn.neural_network import MLPClassifier
 
-from algorithms.config import DATA_DIR
+from algorithms.config import DATA_DIR, OBESITY_LEVEL_ORDER, encode_obesity_labels
 
 dataset_name: str = "ObesityDataSet_raw_and_data_sinthetic.csv"
 dataset_target_column: str = "NObeyesdad"
 
-test_size: float = 0.2
-train_size: float = 1.0 - test_size
 random_state: int = 42
+test_size: float = 0.2
 stratify = None
 
-# Basic MLP hyperparameters
-hidden_layer_sizes: tuple[int, int] = (128, 64)
-activation: str = "relu"
+# MLP hyperparameters (single-run training; tune via run_nn_gridsearch)
+hidden_layer_sizes: tuple[int, int] = (256, 128)
+activation: str = "tanh"
 solver: str = "adam"
-alpha: float = 1e-4
+alpha: float = 5e-05
 batch_size: int = 64
 learning_rate_init: float = 0.001
-max_iter: int = 200
+max_iter: int = 1000
 
 
 def load_obesity_data() -> pd.DataFrame:
@@ -35,6 +33,24 @@ def load_obesity_data() -> pd.DataFrame:
     return pd.read_csv(data_path)
 
 
+def get_mlp_architecture() -> tuple[int, tuple[int, ...], int, list[str], list[str]]:
+    """
+    Return (n_input_features, hidden_layer_sizes, n_classes, class_names, feature_names)
+    for the obesity MLP, using the same preprocessing as training (no model fit).
+    """
+    df = load_obesity_data()
+    features = df.drop(columns=[dataset_target_column])
+    encoded = pd.get_dummies(features, drop_first=True)
+    n_input = encoded.shape[1]
+    feature_names = encoded.columns.astype(str).tolist()
+    y_raw = df[dataset_target_column]
+    present = set(y_raw.unique().tolist())
+    # Same order as in obesity_viz diagrams (ordinal: insufficient → obesity type III)
+    class_names = [lvl for lvl in OBESITY_LEVEL_ORDER if lvl in present]
+    n_classes = len(class_names)
+    return (n_input, hidden_layer_sizes, n_classes, class_names, feature_names)
+
+
 def train_mlp_classifier(df: pd.DataFrame) -> MLPClassifier:
     """Train an MLP classifier (neural network) on the obesity dataframe."""
     if dataset_target_column not in df.columns:
@@ -42,20 +58,19 @@ def train_mlp_classifier(df: pd.DataFrame) -> MLPClassifier:
         raise ValueError(msg)
 
     y_raw = df[dataset_target_column]
-    X = df.drop(columns=[dataset_target_column])
+    x = df.drop(columns=[dataset_target_column])
 
     # One-hot encode categorical features; keep numeric columns as-is.
-    X_encoded = pd.get_dummies(X, drop_first=True)
+    x_encoded = pd.get_dummies(x, drop_first=True)
 
-    # Encode string labels into integer classes 0..n-1.
-    label_encoder = LabelEncoder()
-    y = label_encoder.fit_transform(y_raw)
+    # Encode string labels into integer classes 0..n-1 (canonical OBESITY_LEVEL_ORDER).
+    y, label_encoder = encode_obesity_labels(y_raw)
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X_encoded,
+    x_train, x_test, y_train, y_test = train_test_split(
+        x_encoded,
         y,
         test_size=test_size,
-        train_size=train_size,
+        train_size=1.0 - test_size,
         random_state=random_state,
         stratify=stratify,
     )
@@ -71,9 +86,9 @@ def train_mlp_classifier(df: pd.DataFrame) -> MLPClassifier:
         random_state=random_state,
     )
 
-    model.fit(X_train, y_train)
+    model.fit(x_train, y_train)
 
-    y_pred = model.predict(X_test)
+    y_pred = model.predict(x_test)
     acc = accuracy_score(y_test, y_pred)
 
     print("Label mapping (class index -> label):")
@@ -93,11 +108,10 @@ def train_mlp_classifier(df: pd.DataFrame) -> MLPClassifier:
 
 
 def main() -> None:
-    """Entry point for running an MLP on the obesity dataset."""
+    """Entry point: train a single MLP with fixed hyperparameters and print metrics."""
     df = load_obesity_data()
     train_mlp_classifier(df)
 
 
 if __name__ == "__main__":
     main()
-

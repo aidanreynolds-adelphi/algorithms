@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import pandas as pd  # type: ignore[import-untyped]
-from sklearn.linear_model import LogisticRegression  # type: ignore[import-not-found]
-from sklearn.metrics import accuracy_score, classification_report  # type: ignore[import-not-found]
-from sklearn.model_selection import train_test_split  # type: ignore[import-not-found]
-from sklearn.preprocessing import LabelEncoder  # type: ignore[import-not-found]
+import pandas as pd
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, classification_report
+from sklearn.model_selection import train_test_split
 
-from algorithms.config import DATA_DIR
+from algorithms.config import DATA_DIR, encode_obesity_labels
 
 #
 # Obesity dataset configuration
@@ -14,16 +13,20 @@ dataset_name: str = "ObesityDataSet_raw_and_data_sinthetic.csv"
 dataset_target_column: str = "NObeyesdad"
 
 # train_test_split hyperparameters
-test_size: float = 0.2
-train_size: float = 1.0 - test_size  # must sum to 1.0
 random_state: int = 42
+test_size: float = 0.2
 stratify = None
 
 # Logistic Regression hyperparameters
-solver: str = "lbfgs"
-max_iter: int = 1000
-C: float = 1.0
-
+# Best params: {'C': 10, 'class_weight': 'balanced', 'fit_intercept': False, 'intercept_scaling': 1, 'l1_ratio': 0, 'max_iter': 1000, 'solver': 'newton-cholesky', 'tol': 0.01}
+solver: str = "newton-cholesky"
+max_iter: int = 10000
+C: float = 10
+class_weight: str | None = "balanced"
+fit_intercept: bool = False
+intercept_scaling: float = 1
+l1_ratio: float = 0
+tol: float = 0.01
 
 def load_obesity_data() -> pd.DataFrame:
     """Load the obesity CSV data from the project ``data`` directory."""
@@ -41,29 +44,67 @@ def train_logistic_regression(df: pd.DataFrame) -> LogisticRegression:
         raise ValueError(msg)
 
     y_raw = df[dataset_target_column]
-    X = df.drop(columns=[dataset_target_column])
+    x = df.drop(columns=[dataset_target_column])
 
     # One-hot encode categorical features; keep numeric columns as-is.
-    X_encoded = pd.get_dummies(X, drop_first=True)
+    x_encoded = pd.get_dummies(x, drop_first=True)
+    feature_names = x_encoded.columns.astype(str).tolist()
 
-    # Encode string labels into integer classes 0..n-1.
-    label_encoder = LabelEncoder()
-    y = label_encoder.fit_transform(y_raw)
+    # Encode string labels into integer classes 0..n-1 (canonical OBESITY_LEVEL_ORDER).
+    y, label_encoder = encode_obesity_labels(y_raw)
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X_encoded,
+    x_train, x_test, y_train, y_test = train_test_split(
+        x_encoded,
         y,
         test_size=test_size,
-        train_size=train_size,
+        train_size=1.0 - test_size,
         random_state=random_state,
         stratify=stratify,
     )
 
-    model = LogisticRegression(solver=solver, max_iter=max_iter, C=C)
+    model = LogisticRegression(
+        solver=solver,
+        max_iter=max_iter,
+        C=C,
+        class_weight=class_weight,
+        fit_intercept=fit_intercept,
+        intercept_scaling=intercept_scaling,
+        l1_ratio=l1_ratio,
+        tol=tol,
+    )
 
-    model.fit(X_train, y_train)
+    model.fit(x_train, y_train)
 
-    y_pred = model.predict(X_test)
+    # Report optimizer progress so we can see how close we were to max_iter.
+    n_iter = model.n_iter_
+    max_n_iter = int(max(n_iter)) if hasattr(n_iter, "__len__") else int(n_iter)
+
+    print(f"\nSolver: {solver}, max_iter={max_iter}, C={C}")
+    print(f"Number of iterations run (n_iter_): {n_iter} (max across classes: {max_n_iter})")
+
+    # ------------------------------------------------------------------
+    # Feature contribution section
+    # ------------------------------------------------------------------
+    coef = model.coef_
+    class_names = [str(c) for c in label_encoder.classes_]
+
+    # For multiclass, coef_ has shape (n_classes, n_features).
+    coef_df = pd.DataFrame(coef, columns=feature_names, index=class_names)
+
+    # Aggregate absolute coefficient magnitudes across classes as a simple
+    # measure of overall contribution strength.
+    importance = coef_df.abs().sum(axis=0).sort_values(ascending=False)
+
+    print("\nFeature contribution summary (logistic regression coefficients)")
+    print("Top features by absolute coefficient magnitude (summed over classes):")
+    for feature, score in importance.head(20).items():
+        print(f"  {feature}: {score:.4f}")
+
+    print("\nFull coefficient table (rows = class, columns = feature):")
+    # Transpose so that each row is a feature for readability in the report.
+    print(coef_df.T.to_string())
+
+    y_pred = model.predict(x_test)
     acc = accuracy_score(y_test, y_pred)
 
     print("Label mapping (class index -> label):")
@@ -90,4 +131,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
