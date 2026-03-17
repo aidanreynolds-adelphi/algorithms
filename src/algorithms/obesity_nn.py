@@ -15,13 +15,22 @@ test_size: float = 0.2
 stratify = None
 
 # MLP hyperparameters (single-run training; tune via run_nn_gridsearch)
-hidden_layer_sizes: tuple[int, int] = (512, 128)
-activation: str = "tanh"
-solver: str = "adam"
-alpha: float = 5e-05
-batch_size: int = 64
-learning_rate_init: float = 0.001
-max_iter: int = 1000
+# hidden_layer_sizes: tuple[int, int] = (512, 128)
+# activation: str = "tanh"
+# solver: str = "adam"
+# alpha: float = 5e-05
+# batch_size: int = 64
+# learning_rate_init: float = 0.001
+# max_iter: int = 1000
+
+# Best CV accuracy: 0.9598
+hidden_layer_sizes: tuple[int, int, int] = (256, 128, 64)
+activation: str = "relu"
+solver: str = "lbfgs"
+alpha: float = 1e-06
+batch_size: int = 8
+learning_rate_init: float = 0.01
+max_iter: int = 8000
 
 
 def load_obesity_data() -> pd.DataFrame:
